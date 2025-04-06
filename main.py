@@ -1,5 +1,7 @@
+import argparse
 import json
 import math
+import os
 import random
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
@@ -12,8 +14,15 @@ from Subscription import Subscription
 with open("input.json", "r") as f:
     config = json.load(f)
 
-# TODO: read from cmd options
-NUM_THREADS = 1
+# Set up the argument parser
+parser = argparse.ArgumentParser(description="Process a thread number parameter.")
+parser.add_argument('--threads', type=int, help='Number of threads', required=True)
+
+# Parse the arguments
+args = parser.parse_args()
+
+# Access the thread number
+NUM_THREADS = args.threads
 
 numbers = config["numbers"]
 structure = config["structure"]
@@ -42,6 +51,8 @@ for field, details in structure.items():
         "operators": details["operators"]
     }
 
+PUBLICATIONS_OUTPUT_FILE="publications.txt"
+SUBSCRIPTIONS_OUTPUT_FILE="subscriptions.txt"
 
 subscriptions = queue.PriorityQueue()
 subscriptions_list = []
@@ -68,28 +79,23 @@ def generate_publication(num_publications = 1):
             current_publication.append({field_name: value})
         bulk_publications.append(current_publication)
 
-    write_output(bulk_publications, "a")
+    write_output(bulk_publications, PUBLICATIONS_OUTPUT_FILE, "a")
 
 def generate_publications():
-    publications_per_task = PUBLICATIONS//NUM_THREADS
+    publications_per_task = PUBLICATIONS // NUM_THREADS
+    remainder = PUBLICATIONS % NUM_THREADS
+
+    try:
+        os.remove(PUBLICATIONS_OUTPUT_FILE)
+    except FileNotFoundError as e:
+        pass
+
     with ProcessPoolExecutor(max_workers=NUM_THREADS) as executor:
         # Submit tasks to the pool
-        [
+        for i in range(NUM_THREADS):
+            if i == NUM_THREADS - 1:
+                publications_per_task += remainder
             executor.submit(generate_publication, publications_per_task)
-            for i in range(NUM_THREADS)
-        ]
-
-        # Process completed tasks
-        # for future in as_completed(futures):
-        #     result = future.result()
-        #     print(f">> {result}")
-
-
-def write_output(messages, mode):
-    with open("output.txt", mode) as file:
-        for message in messages:
-            file.write(f"{message}\n")
-
 
 def add_field_to_subscription():
     popped_subscriptions = []
@@ -100,11 +106,9 @@ def add_field_to_subscription():
             fields_from_map = set(precise_field_number.keys())
             fields_from_map = fields_from_map.difference(current_subscription.get_used_fields())
             if len(fields_from_map) == 0:
-                # print("IN CONTINUE")
                 continue
             
             max_field = min(fields_from_map, key=lambda k: precise_field_number[k], default=None)
-            # random_field = random.choice(list(fields_from_map))
             if precise_field_number[max_field] == 1:
                 del precise_field_number[max_field]
             else:
@@ -130,10 +134,9 @@ def add_field_to_subscription():
 
 
 def generate_subscriptions():
-    for i in range(SUBSCRIPTIONS):
+    for _ in range(SUBSCRIPTIONS):
         subscriptions.put(Subscription())
 
-    print(sum(precise_field_number.values()))
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         futures = [
             executor.submit(add_field_to_subscription)
@@ -142,25 +145,33 @@ def generate_subscriptions():
 
         for future in as_completed(futures):
             try:
-                result = future.result()  # This will raise the exception if any
+                future.result()  
             except Exception as e:
-                print(f"❌ Exception in thread: {e}")
+                print(f"Exception in thread: {e}")
 
     while not subscriptions.empty():
         subscriptions_list.append(subscriptions.get().values)
+    
+    write_output(subscriptions_list, SUBSCRIPTIONS_OUTPUT_FILE)
 
+
+def write_output(messages, file_path, mode="w"):
+    with open(file_path, mode) as file:
+        for message in messages:
+            file.write(f"{message}\n")
 
 def main():
-    generate_publications()
-    # generate_subscriptions()
-    # write_output(subscriptions_list)
-
-
-if __name__ == "__main__":
+   
     start_time = time.perf_counter()
 
-    main()
+    generate_publications()
+    generate_subscriptions()
 
     end_time = time.perf_counter()
     elapsed = end_time - start_time
-    print(f"\n⏱️ Execution time: {elapsed:.4f} seconds")
+    print(f"\nExecution time: {elapsed:.4f} seconds")
+
+
+if __name__ == "__main__":
+    main()
+
