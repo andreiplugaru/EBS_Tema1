@@ -82,6 +82,8 @@ def generate_publication(num_publications = 1):
     write_output(bulk_publications, PUBLICATIONS_OUTPUT_FILE, "a")
 
 def generate_publications():
+    start_time = time.perf_counter()
+
     publications_per_task = PUBLICATIONS // NUM_THREADS
     remainder = PUBLICATIONS % NUM_THREADS
 
@@ -96,51 +98,58 @@ def generate_publications():
             if i == NUM_THREADS - 1:
                 publications_per_task += remainder
             executor.submit(generate_publication, publications_per_task)
+    
+    end_time = time.perf_counter()
+    elapsed = end_time - start_time
+    print(f"\nExecution time for generating publications: {elapsed:.4f} seconds")
 
-def add_field_to_subscription():
-    popped_subscriptions = []
-    while True:
-        current_subscription = subscriptions.get()
-        popped_subscriptions.append(current_subscription)
-        with precise_field_number_lock:
-            fields_from_map = set(precise_field_number.keys())
-            fields_from_map = fields_from_map.difference(current_subscription.get_used_fields())
-            if len(fields_from_map) == 0:
-                continue
-            
-            max_field = min(fields_from_map, key=lambda k: precise_field_number[k], default=None)
-            if precise_field_number[max_field] == 1:
-                del precise_field_number[max_field]
-            else:
-                precise_field_number[max_field] -= 1
-
-        with precise_field_equality_number_lock:
-            if max_field in precise_field_equality_number:
-                operator = "="
-
-                if precise_field_equality_number[max_field] == 1:
-                    del precise_field_equality_number[max_field]
+def add_field_to_subscription(batch_size):
+    for _ in range(batch_size):
+        popped_subscriptions = []
+        while True:
+            current_subscription = subscriptions.get()
+            popped_subscriptions.append(current_subscription)
+            with precise_field_number_lock:
+                fields_from_map = set(precise_field_number.keys())
+                fields_from_map = fields_from_map.difference(current_subscription.get_used_fields())
+                if len(fields_from_map) == 0:
+                    continue
+                
+                max_field = min(fields_from_map, key=lambda k: precise_field_number[k], default=None)
+                if precise_field_number[max_field] == 1:
+                    del precise_field_number[max_field]
                 else:
-                    precise_field_equality_number[max_field] -= 1
+                    precise_field_number[max_field] -= 1
 
-            else:
-                operator = random.choice(FIELD_STRUCTURE[max_field]["operators"])
+            with precise_field_equality_number_lock:
+                if max_field in precise_field_equality_number:
+                    operator = "="
 
-        current_subscription.add_value((max_field, operator, generate_random_value_for_field(max_field)))
+                    if precise_field_equality_number[max_field] == 1:
+                        del precise_field_equality_number[max_field]
+                    else:
+                        precise_field_equality_number[max_field] -= 1
 
-        break
+                else:
+                    operator = random.choice(FIELD_STRUCTURE[max_field]["operators"])
 
-    [subscriptions.put(subscription) for subscription in popped_subscriptions]
+            current_subscription.add_value((max_field, operator, generate_random_value_for_field(max_field)))
+
+            break
+
+        [subscriptions.put(subscription) for subscription in popped_subscriptions]
 
 
 def generate_subscriptions():
+    start_time = time.perf_counter()
+
     for _ in range(SUBSCRIPTIONS):
         subscriptions.put(Subscription())
 
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         futures = [
-            executor.submit(add_field_to_subscription)
-            for _ in range(sum(precise_field_number.values()))
+            executor.submit(add_field_to_subscription, sum(precise_field_number.values()) // NUM_THREADS)
+            for _ in range(NUM_THREADS)
         ]
 
         for future in as_completed(futures):
@@ -154,6 +163,10 @@ def generate_subscriptions():
     
     write_output(subscriptions_list, SUBSCRIPTIONS_OUTPUT_FILE)
 
+    end_time = time.perf_counter()
+    elapsed = end_time - start_time
+    print(f"\nExecution time for generating subscriptions: {elapsed:.4f} seconds")
+
 
 def write_output(messages, file_path, mode="w"):
     with open(file_path, mode) as file:
@@ -161,15 +174,9 @@ def write_output(messages, file_path, mode="w"):
             file.write(f"{message}\n")
 
 def main():
-   
-    start_time = time.perf_counter()
-
     generate_publications()
     generate_subscriptions()
 
-    end_time = time.perf_counter()
-    elapsed = end_time - start_time
-    print(f"\nExecution time: {elapsed:.4f} seconds")
 
 
 if __name__ == "__main__":
