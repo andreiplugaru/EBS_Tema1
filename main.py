@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import queue
 
+from FIFOPriorityQueue import FIFOPriorityQueue
 from Subscription import Subscription
 
 with open("input.json", "r") as f:
@@ -54,7 +55,7 @@ for field, details in structure.items():
 PUBLICATIONS_OUTPUT_FILE="publications.txt"
 SUBSCRIPTIONS_OUTPUT_FILE="subscriptions.txt"
 
-subscriptions = queue.PriorityQueue()
+subscriptions = FIFOPriorityQueue()
 subscriptions_list = []
 
 
@@ -106,51 +107,54 @@ def generate_publications():
 def add_field_to_subscription(batch_size):
     for _ in range(batch_size):
         popped_subscriptions = []
-        while True:
-            current_subscription = subscriptions.get()
-            popped_subscriptions.append(current_subscription)
-            with precise_field_number_lock:
-                fields_from_map = set(precise_field_number.keys())
-                fields_from_map = fields_from_map.difference(current_subscription.get_used_fields())
-                if len(fields_from_map) == 0:
-                    continue
-                
-                max_field = min(fields_from_map, key=lambda k: precise_field_number[k], default=None)
-                if precise_field_number[max_field] == 1:
-                    del precise_field_number[max_field]
+        current_subscription = subscriptions.pop()
+        popped_subscriptions.append(current_subscription)
+        with precise_field_number_lock:
+            fields_from_map = set(precise_field_number.keys())
+            fields_from_map = fields_from_map.difference(current_subscription.get_used_fields())
+            if len(fields_from_map) == 0:
+                print("continue")
+                continue
+
+            max_field = min(fields_from_map, key=lambda k: precise_field_number[k], default=None)
+            if precise_field_number[max_field] == 1:
+                del precise_field_number[max_field]
+            else:
+                precise_field_number[max_field] -= 1
+
+        with precise_field_equality_number_lock:
+            if max_field in precise_field_equality_number:
+                operator = "="
+
+                if precise_field_equality_number[max_field] == 1:
+                    del precise_field_equality_number[max_field]
                 else:
-                    precise_field_number[max_field] -= 1
+                    precise_field_equality_number[max_field] -= 1
 
-            with precise_field_equality_number_lock:
-                if max_field in precise_field_equality_number:
-                    operator = "="
+            else:
+                operator = random.choice(FIELD_STRUCTURE[max_field]["operators"])
 
-                    if precise_field_equality_number[max_field] == 1:
-                        del precise_field_equality_number[max_field]
-                    else:
-                        precise_field_equality_number[max_field] -= 1
+        current_subscription.add_value((max_field, operator, generate_random_value_for_field(max_field)))
 
-                else:
-                    operator = random.choice(FIELD_STRUCTURE[max_field]["operators"])
-
-            current_subscription.add_value((max_field, operator, generate_random_value_for_field(max_field)))
-
-            break
-
-        [subscriptions.put(subscription) for subscription in popped_subscriptions]
+        subscriptions.push(current_subscription, current_subscription.get_length())
 
 
 def generate_subscriptions():
     start_time = time.perf_counter()
 
     for _ in range(SUBSCRIPTIONS):
-        subscriptions.put(Subscription())
+        subscriptions.push(Subscription(), 0)
+
+    fields_per_task = sum(precise_field_number.values()) // NUM_THREADS
+    remainder = sum(precise_field_number.values()) % NUM_THREADS
 
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-        futures = [
-            executor.submit(add_field_to_subscription, sum(precise_field_number.values()) // NUM_THREADS)
-            for _ in range(NUM_THREADS)
-        ]
+        futures = []
+        for i in range(NUM_THREADS):
+            if i == NUM_THREADS - 1:
+                fields_per_task += remainder
+
+            futures.append(executor.submit(add_field_to_subscription, fields_per_task))
 
         for future in as_completed(futures):
             try:
@@ -158,8 +162,8 @@ def generate_subscriptions():
             except Exception as e:
                 print(f"Exception in thread: {e}")
 
-    while not subscriptions.empty():
-        subscriptions_list.append(subscriptions.get().values)
+    while not subscriptions.is_empty():
+        subscriptions_list.append(subscriptions.pop().values)
     
     write_output(subscriptions_list, SUBSCRIPTIONS_OUTPUT_FILE)
 
