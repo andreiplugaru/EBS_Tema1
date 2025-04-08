@@ -1,4 +1,5 @@
 import argparse
+import ast
 import json
 import math
 import os
@@ -7,6 +8,8 @@ import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor
 import threading
+
+from filelock import FileLock
 
 from FIFOPriorityQueue import FIFOPriorityQueue
 from Subscription import Subscription
@@ -52,7 +55,12 @@ for field, details in structure.items():
     }
 
 PUBLICATIONS_OUTPUT_FILE="publications.txt"
+PUBLICATIONS_OUTPUT_LOCK_FILE="publications.lock"
+publication_file_lock = FileLock(PUBLICATIONS_OUTPUT_LOCK_FILE)
+
+
 SUBSCRIPTIONS_OUTPUT_FILE="subscriptions.txt"
+CHECK_OUTPUT_FILE="check-output.txt"
 
 subscriptions = FIFOPriorityQueue()
 subscriptions_list = []
@@ -97,6 +105,7 @@ def generate_publications():
         for i in range(NUM_THREADS):
             if i == NUM_THREADS - 1:
                 publications_per_task += remainder
+            
             executor.submit(generate_publication, publications_per_task)
     
     end_time = time.perf_counter()
@@ -169,13 +178,75 @@ def generate_subscriptions():
 
 
 def write_output(messages, file_path, mode="w"):
-    with open(file_path, mode) as file:
-        for message in messages:
-            file.write(f"{message}\n")
+    
+    if (file_path == PUBLICATIONS_OUTPUT_FILE):
+        
+        with publication_file_lock:
+            try:
+                with open(file_path, mode) as file:
+                    for message in messages:
+                        file.write(f"{message}\n")
+            except Exception as e:
+                print(f"Error writing to file {file_path}: {e}")
+
+            
+    else:
+        with open(file_path, mode) as file:
+            for message in messages:
+                file.write(f"{message}\n")
+
+def check_output():
+
+    generated_publications = 0
+    with open(PUBLICATIONS_OUTPUT_FILE, "r") as file:
+        for line in file.readlines():
+            generated_publications += 1
+
+    for field in FIELD_WEIGHTS.keys():
+        precise_field_number[field] = round(SUBSCRIPTIONS * FIELD_WEIGHTS[field])
+    for field in EQUALITY_WEIGHTS.keys():
+        precise_field_equality_number[field] = math.ceil(precise_field_number[field] * EQUALITY_WEIGHTS[field])
+
+    generated_subscriptions = 0    
+    restricted_fields = {key: 0 for key in precise_field_number}
+    restricted_equality_fields = {key: 0 for key in precise_field_equality_number}
+
+    with open(SUBSCRIPTIONS_OUTPUT_FILE, "r") as file:
+        for line in file.readlines():
+            generated_subscriptions += 1
+            try:
+                tuple_list = ast.literal_eval(line.strip())
+            except (SyntaxError, ValueError):
+                continue 
+            for item in tuple_list:
+                key = item[0]
+                operator = item[1]
+                if key in restricted_fields:
+                    restricted_fields[key] += 1
+                if key in restricted_equality_fields and operator == "=":
+                    restricted_equality_fields[key] += 1
+                
+    
+   
+    with open(CHECK_OUTPUT_FILE, "w") as file:
+        file.write(f"Expected Publications: {PUBLICATIONS}\n")    
+        file.write(f"Generated Publications: {generated_publications}\n")
+        
+        file.write(f"Expected subscriptions: {SUBSCRIPTIONS}\n")
+        file.write(f"generated_subscriptions: {generated_subscriptions}\n")
+        for key, value in restricted_fields.items():
+            file.write(f"Field {key} expected times : {precise_field_number[key]}\n")
+            file.write(f"Field {key} generated times : {value} \n")
+        for key, value in restricted_equality_fields.items():
+            file.write(f"Field {key} expected at least  equality times : {precise_field_equality_number[key]}\n")
+            file.write(f"Field {key} generated equality times : {value} \n")
+
+     
 
 def main():
     generate_publications()
     generate_subscriptions()
+    check_output()
 
 
 
