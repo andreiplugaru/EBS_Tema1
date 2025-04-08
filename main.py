@@ -7,7 +7,6 @@ import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor
 import threading
-import queue
 
 from FIFOPriorityQueue import FIFOPriorityQueue
 from Subscription import Subscription
@@ -112,29 +111,26 @@ def add_field_to_subscription(batch_size):
         with precise_field_number_lock:
             fields_from_map = set(precise_field_number.keys())
             fields_from_map = fields_from_map.difference(current_subscription.get_used_fields())
-            if len(fields_from_map) == 0:
-                print("continue")
-                continue
 
-            max_field = min(fields_from_map, key=lambda k: precise_field_number[k], default=None)
-            if precise_field_number[max_field] == 1:
-                del precise_field_number[max_field]
+            min_field = min(fields_from_map, key=lambda k: precise_field_number[k], default=None)
+            if precise_field_number[min_field] == 1:
+                del precise_field_number[min_field]
             else:
-                precise_field_number[max_field] -= 1
+                precise_field_number[min_field] -= 1
 
         with precise_field_equality_number_lock:
-            if max_field in precise_field_equality_number:
+            if min_field in precise_field_equality_number:
                 operator = "="
 
-                if precise_field_equality_number[max_field] == 1:
-                    del precise_field_equality_number[max_field]
+                if precise_field_equality_number[min_field] == 1:
+                    del precise_field_equality_number[min_field]
                 else:
-                    precise_field_equality_number[max_field] -= 1
+                    precise_field_equality_number[min_field] -= 1
 
             else:
-                operator = random.choice(FIELD_STRUCTURE[max_field]["operators"])
+                operator = random.choice(FIELD_STRUCTURE[min_field]["operators"])
 
-        current_subscription.add_value((max_field, operator, generate_random_value_for_field(max_field)))
+        current_subscription.add_value((min_field, operator, generate_random_value_for_field(min_field)))
 
         subscriptions.push(current_subscription, current_subscription.get_length())
 
