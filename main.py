@@ -55,11 +55,9 @@ for field, details in structure.items():
     }
 
 PUBLICATIONS_OUTPUT_FILE="publications.txt"
-publication_file_lock = FileLock(PUBLICATIONS_OUTPUT_FILE)
+PUBLICATIONS_OUTPUT_LOCK_FILE="publications.lock"
+publication_file_lock = FileLock(PUBLICATIONS_OUTPUT_LOCK_FILE)
 
-# PUBLICATIONS_LOCK_FILE="publications.lock"
-# with open(PUBLICATIONS_LOCK_FILE, "w") as lock_file:
-#     lock_file.write("Dummy")
 
 SUBSCRIPTIONS_OUTPUT_FILE="subscriptions.txt"
 CHECK_OUTPUT_FILE="check-output.txt"
