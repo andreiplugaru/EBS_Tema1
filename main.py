@@ -106,7 +106,6 @@ def generate_publications():
             if i == NUM_THREADS - 1:
                 publications_per_task += remainder
             
-            print(f"Generating {publications_per_task} publications in thread {i + 1}")
             executor.submit(generate_publication, publications_per_task)
     
     end_time = time.perf_counter()

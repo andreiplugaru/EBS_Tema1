@@ -1,14 +1,15 @@
 {
     "numbers" : {
-        "publications" : 700000,
-        "subscriptions" : 50000,
+        "publications" : 100000,
+        "subscriptions" : 100000,
         "field_weights" : {
             "temperature" : 0.2,
             "rain" : 0.3,
             "city" : 1
         },
         "equality_weights" : {
-            "city" : 0.9
+            "city" : 0.9,
+            "temperature":0.5
         }
     },
     "structure" : {
