@@ -28,5 +28,5 @@
 
 To optimize performance, we implemented a hybrid parallelism strategy: publication generation was handled using multiple processes, while subscription generation was managed using multiple threads.
 
-The reason for using a multi process approach was to avoid Python limitation which allows only one thread to hold the control of the Python interpreter([docs](https://wiki.python.org/moin/GlobalInterpreterLock)). This resulted in clear performance improvements when the number of processes are increased. However, for the subcription generated we needed more advanced synchronization, so we used a more traditional multi threading approach.
+The reason for using a multi process approach was to avoid Python limitation which allows only one thread to hold the control of the Python interpreter([docs](https://wiki.python.org/moin/GlobalInterpreterLock)). This resulted in clear performance improvements when the number of processes are increased. However, for the subcriptions generation we needed more advanced synchronization, so we used a more traditional multi threading approach.
 
